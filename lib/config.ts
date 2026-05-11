@@ -2,6 +2,9 @@ import { z } from "zod";
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  DIRECT_DATABASE_URL: z
+    .string()
+    .min(1, "DIRECT_DATABASE_URL is required"),
   GOOGLE_API_KEY: z.string().min(1, "GOOGLE_API_KEY is required"),
   SESSION_SECRET: z
     .string()

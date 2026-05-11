@@ -1,0 +1,57 @@
+// askrepo database schema.
+//
+// pgvector is used for the Document.embedding column. Prisma does not
+// model vector types natively, so the column is declared as
+// Unsupported("vector(768)") and the CREATE EXTENSION statement plus
+// the HNSW index are hand-written into the init migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+enum RepoStatus {
+  PENDING
+  INGESTING
+  EMBEDDING
+  READY
+  FAILED
+}
+
+model Repo {
+  id           String     @id @default(cuid())
+  url          String     @unique
+  owner        String
+  name         String
+  commitSha    String
+  status       RepoStatus @default(PENDING)
+  errorMessage String?
+  fileCount    Int        @default(0)
+  chunkCount   Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  documents Document[]
+}
+
+model Document {
+  id         String   @id @default(cuid())
+  repoId     String
+  path       String
+  chunkIndex Int
+  content    String
+  tokenCount Int
+  embedding  Unsupported("vector(768)")?
+  startLine  Int
+  endLine    Int
+  createdAt  DateTime @default(now())
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@index([repoId, path])
+}
