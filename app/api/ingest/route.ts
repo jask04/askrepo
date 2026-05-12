@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { prisma } from "@/lib/db";
+import { EMBED_BATCH_SIZE, EmbedError, embedBatch } from "@/lib/embed";
 import {
   MAX_TOTAL_CHUNK_BYTES,
   cloneAndChunk,
@@ -103,6 +104,43 @@ export async function POST(req: Request) {
     },
   });
 
+  // Embedding key. Day 7 will plumb the visitor's cookie-bound key
+  // through; for now Day 3/4 just use the host key.
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    const errorMessage = "GOOGLE_API_KEY is not configured";
+    await prisma.repo.update({
+      where: { id: repo.id },
+      data: { status: "FAILED", errorMessage },
+    });
+    return Response.json({ error: errorMessage, repoId: repo.id }, { status: 500 });
+  }
+
+  try {
+    await backfillEmbeddings(repo.id, apiKey);
+  } catch (err) {
+    const errorMessage =
+      err instanceof EmbedError
+        ? `Embedding failed (${err.status}): ${err.message}`
+        : err instanceof Error
+          ? `Embedding failed: ${err.message}`
+          : "Embedding failed";
+    await prisma.repo.update({
+      where: { id: repo.id },
+      data: { status: "FAILED", errorMessage: errorMessage.slice(0, 500) },
+    });
+    const status = err instanceof EmbedError && err.status === 401 ? 401 : 502;
+    return Response.json(
+      { error: "Embedding failed", repoId: repo.id },
+      { status },
+    );
+  }
+
+  await prisma.repo.update({
+    where: { id: repo.id },
+    data: { status: "READY" },
+  });
+
   const elapsedMs = Date.now() - startedAt;
   console.log(
     `ingest ok repo=${repo.id} owner=${repo.owner} name=${repo.name} files=${result.files.length} chunks=${docs.length} bytes=${result.totalBytes} elapsed_ms=${elapsedMs}`,
@@ -113,4 +151,45 @@ export async function POST(req: Request) {
     fileCount: result.files.length,
     chunkCount: docs.length,
   });
+}
+
+/**
+ * Page through Documents for this repo whose embedding is NULL, embed
+ * each batch via Gemini, and write the vectors back. Filtering by
+ * NULL on the Unsupported vector column requires raw SQL — Prisma's
+ * typed client can't see it.
+ */
+async function backfillEmbeddings(repoId: string, apiKey: string) {
+  while (true) {
+    const rows = await prisma.$queryRaw<
+      Array<{ id: string; content: string }>
+    >`
+      SELECT id, content FROM "Document"
+      WHERE "repoId" = ${repoId} AND embedding IS NULL
+      ORDER BY id ASC
+      LIMIT ${EMBED_BATCH_SIZE}
+    `;
+    if (rows.length === 0) return;
+
+    const vectors = await embedBatch(
+      rows.map((r) => r.content),
+      apiKey,
+      { taskType: "RETRIEVAL_DOCUMENT" },
+    );
+
+    await prisma.$transaction(
+      rows.map((row, i) => {
+        const vec = vectors[i];
+        if (!vec) {
+          throw new EmbedError(502, `missing embedding for row ${row.id}`);
+        }
+        const literal = `[${vec.join(",")}]`;
+        return prisma.$executeRaw`
+          UPDATE "Document"
+          SET embedding = ${literal}::vector
+          WHERE id = ${row.id}
+        `;
+      }),
+    );
+  }
 }
