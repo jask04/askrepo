@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { ChatError, answerQuestion } from "@/lib/chat";
+import { ChatError, streamAnswer } from "@/lib/chat";
+import { EmbedError } from "@/lib/embed";
 import { resolveApiKey } from "@/lib/session";
 
 export const maxDuration = 60;
@@ -39,38 +40,70 @@ export async function POST(req: Request) {
     );
   }
 
+  // Retrieval runs before the stream opens, so retrieval/embedding
+  // failures surface as a plain JSON error. Failures during the model
+  // call surface inside the stream via onError.
+  let answer;
   try {
-    const answer = await answerQuestion({
+    answer = await streamAnswer({
       repoId: parsed.data.repoId,
       messages: parsed.data.messages,
       apiKey: resolved.apiKey,
-    });
-    return Response.json({
-      content: answer.content,
-      citations: answer.citations.map((c) => ({
-        path: c.path,
-        startLine: c.startLine,
-        endLine: c.endLine,
-        score: c.score,
-      })),
+      abortSignal: req.signal,
     });
   } catch (err) {
-    if (err instanceof ChatError) {
-      const userMessage =
-        err.status === 401
-          ? "API key is invalid"
-          : err.status === 429
-            ? "API key is rate limited"
-            : "Chat request failed";
-      const status =
-        err.status === 401 || err.status === 429 ? err.status : 502;
-      console.error(
-        `chat err status=${err.status} message=${err.message.slice(0, 200)}`,
-      );
-      return Response.json({ error: userMessage }, { status });
-    }
-    const message = err instanceof Error ? err.message : "chat failed";
-    console.error(`chat err message=${message.slice(0, 200)}`);
-    return Response.json({ error: "chat failed" }, { status: 502 });
+    return preStreamError(err);
   }
+
+  return answer.result.toUIMessageStreamResponse({
+    onError: (error) => {
+      const status = errorStatus(error);
+      console.error(`chat stream err status=${status ?? "?"}`);
+      if (status === 401 || status === 403) {
+        return "Your API key was rejected by Google.";
+      }
+      if (status === 429) {
+        return "Your API key is rate limited.";
+      }
+      return "The chat request failed.";
+    },
+  });
+}
+
+/** Extract an HTTP status from an AI SDK APICallError, if present. */
+function errorStatus(error: unknown): number | undefined {
+  if (error && typeof error === "object" && "statusCode" in error) {
+    const status = (error as { statusCode?: unknown }).statusCode;
+    if (typeof status === "number") return status;
+  }
+  return undefined;
+}
+
+function preStreamError(err: unknown): Response {
+  // ChatError validation messages are ours and safe to surface.
+  if (err instanceof ChatError && err.status === 400) {
+    return Response.json({ error: err.message }, { status: 400 });
+  }
+
+  const status =
+    err instanceof ChatError
+      ? err.status
+      : err instanceof EmbedError
+        ? err.status
+        : 502;
+  console.error(`chat err status=${status}`);
+
+  if (status === 401 || status === 403) {
+    return Response.json(
+      { error: "Your API key was rejected by Google." },
+      { status: 401 },
+    );
+  }
+  if (status === 429) {
+    return Response.json(
+      { error: "Your API key is rate limited." },
+      { status: 429 },
+    );
+  }
+  return Response.json({ error: "Chat request failed." }, { status: 502 });
 }

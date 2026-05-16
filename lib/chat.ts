@@ -1,12 +1,13 @@
-// Non-streaming Gemini chat with retrieved repo context. Day 8 will
-// swap the underlying call for the Vercel AI SDK's streamText; the
-// shape of answerQuestion and the system prompt stay the same.
+// Streaming Gemini chat with retrieved repo context, via the Vercel
+// AI SDK. Retrieval and the system prompt are unchanged from the
+// Day 6 non-streaming version — only the model call now streams.
+
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { streamText } from "ai";
 
 import { retrieveTopK, type RetrievedChunk } from "./retrieve";
 
 export const CHAT_MODEL = "gemini-2.5-flash";
-
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${CHAT_MODEL}:generateContent`;
 
 const SYSTEM_INSTRUCTIONS = `You answer questions about a specific GitHub repository.
 
@@ -21,11 +22,6 @@ export type ChatMessage = {
   content: string;
 };
 
-export type ChatAnswer = {
-  content: string;
-  citations: RetrievedChunk[];
-};
-
 export class ChatError extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
@@ -34,15 +30,6 @@ export class ChatError extends Error {
     this.status = status;
   }
 }
-
-type GeminiResponse = {
-  candidates?: Array<{
-    content?: { parts?: Array<{ text?: string }> };
-    finishReason?: string;
-  }>;
-  promptFeedback?: { blockReason?: string };
-  error?: { message?: string };
-};
 
 function formatChunks(chunks: RetrievedChunk[]): string {
   return chunks
@@ -53,17 +40,24 @@ function formatChunks(chunks: RetrievedChunk[]): string {
     .join("\n\n");
 }
 
+export type StreamAnswer = {
+  result: ReturnType<typeof streamText>;
+  citations: RetrievedChunk[];
+};
+
 /**
- * Retrieve top-K chunks for the latest user message, hand them to
- * Gemini Flash alongside the chat history, and return the assistant's
- * reply plus the citations the model was given.
+ * Retrieve top-K chunks for the latest user message, then stream a
+ * Gemini Flash answer grounded in them. Returns the AI SDK stream
+ * result (the route turns it into a streaming HTTP response) plus the
+ * citations the model was given.
  */
-export async function answerQuestion(params: {
+export async function streamAnswer(params: {
   repoId: string;
   messages: ChatMessage[];
   apiKey: string;
-}): Promise<ChatAnswer> {
-  const { repoId, messages, apiKey } = params;
+  abortSignal?: AbortSignal;
+}): Promise<StreamAnswer> {
+  const { repoId, messages, apiKey, abortSignal } = params;
   if (messages.length === 0) {
     throw new ChatError(400, "messages must not be empty");
   }
@@ -79,53 +73,24 @@ export async function answerQuestion(params: {
       ? "No repository excerpts matched this question. Tell the user that, and ask them to rephrase."
       : `Repository excerpts:\n\n${formatChunks(citations)}`;
 
-  const systemInstruction = `${SYSTEM_INSTRUCTIONS}\n\n${contextSection}`;
+  const system = `${SYSTEM_INSTRUCTIONS}\n\n${contextSection}`;
 
-  const body = {
-    systemInstruction: { parts: [{ text: systemInstruction }] },
-    contents: messages.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    })),
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 2048,
-    },
-  };
-
+  const google = createGoogleGenerativeAI({ apiKey });
   const startedAt = Date.now();
-  const resp = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-goog-api-key": apiKey,
+
+  const result = streamText({
+    model: google(CHAT_MODEL),
+    system,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    temperature: 0.2,
+    maxOutputTokens: 2048,
+    abortSignal,
+    onFinish: ({ text, usage }) => {
+      console.log(
+        `chat ok repo=${repoId} model=${CHAT_MODEL} cited=${citations.length} chars=${text.length} tokens=${usage.totalTokens ?? "?"} elapsed_ms=${Date.now() - startedAt}`,
+      );
     },
-    body: JSON.stringify(body),
   });
 
-  if (!resp.ok) {
-    let detail = "";
-    try {
-      detail = (await resp.text()).slice(0, 500);
-    } catch {
-      detail = resp.statusText;
-    }
-    detail = detail.split(apiKey).join("[redacted]");
-    throw new ChatError(resp.status, `Gemini chat error: ${detail}`);
-  }
-
-  const json = (await resp.json()) as GeminiResponse;
-  const block = json.promptFeedback?.blockReason;
-  if (block) {
-    throw new ChatError(400, `Gemini blocked the request: ${block}`);
-  }
-  const parts = json.candidates?.[0]?.content?.parts ?? [];
-  const text = parts.map((p) => p.text ?? "").join("");
-
-  const elapsedMs = Date.now() - startedAt;
-  console.log(
-    `chat ok repo=${repoId} model=${CHAT_MODEL} cited=${citations.length} chars=${text.length} elapsed_ms=${elapsedMs}`,
-  );
-
-  return { content: text, citations };
+  return { result, citations };
 }

@@ -13,7 +13,9 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.75",
     "@prisma/client": "^6.19.3",
+    "ai": "^6.0.184",
     "iron-session": "^8.0.4",
     "js-tiktoken": "^1.0.21",
     "next": "16.2.6",
