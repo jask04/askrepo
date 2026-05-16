@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ChatError, answerQuestion } from "@/lib/chat";
+import { resolveApiKey } from "@/lib/session";
 
 export const maxDuration = 60;
 
@@ -30,11 +31,11 @@ export async function POST(req: Request) {
     );
   }
 
-  const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
+  const resolved = await resolveApiKey();
+  if (!resolved.ok) {
     return Response.json(
-      { error: "GOOGLE_API_KEY is not configured" },
-      { status: 500 },
+      { error: "No Gemini API key. Set your key or start tour mode." },
+      { status: 401 },
     );
   }
 
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
     const answer = await answerQuestion({
       repoId: parsed.data.repoId,
       messages: parsed.data.messages,
-      apiKey,
+      apiKey: resolved.apiKey,
     });
     return Response.json({
       content: answer.content,

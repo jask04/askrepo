@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { MAX_TOP_K, retrieveTopK } from "@/lib/retrieve";
+import { resolveApiKey } from "@/lib/session";
 
 // Thin wrapper around retrieveTopK for manual testing. Day 6 will use
 // the underlying function from inside the chat handler; this endpoint
@@ -26,11 +27,11 @@ export async function GET(req: Request) {
     );
   }
 
-  const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
+  const resolved = await resolveApiKey();
+  if (!resolved.ok) {
     return Response.json(
-      { error: "GOOGLE_API_KEY is not configured" },
-      { status: 500 },
+      { error: "No Gemini API key. Set your key or start tour mode." },
+      { status: 401 },
     );
   }
 
@@ -39,7 +40,7 @@ export async function GET(req: Request) {
     const results = await retrieveTopK(
       parsed.data.repoId,
       parsed.data.q,
-      apiKey,
+      resolved.apiKey,
       parsed.data.k,
     );
     console.log(

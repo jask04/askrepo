@@ -7,6 +7,7 @@ import {
   cloneAndChunk,
   parseGithubUrl,
 } from "@/lib/ingest";
+import { resolveApiKey } from "@/lib/session";
 
 // Ingestion is synchronous within the request. Repos are size-capped
 // (MAX_TOTAL_CHUNK_BYTES, plus a 1MB-per-file limit) to keep the work
@@ -36,6 +37,16 @@ export async function POST(req: Request) {
     return Response.json(
       { error: "url must point to a github.com repository" },
       { status: 400 },
+    );
+  }
+
+  // Resolve the embedding key up front — no point cloning a repo we
+  // can't afford to embed.
+  const resolved = await resolveApiKey();
+  if (!resolved.ok) {
+    return Response.json(
+      { error: "No Gemini API key. Set your key or start tour mode." },
+      { status: 401 },
     );
   }
 
@@ -104,20 +115,8 @@ export async function POST(req: Request) {
     },
   });
 
-  // Embedding key. Day 7 will plumb the visitor's cookie-bound key
-  // through; for now Day 3/4 just use the host key.
-  const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    const errorMessage = "GOOGLE_API_KEY is not configured";
-    await prisma.repo.update({
-      where: { id: repo.id },
-      data: { status: "FAILED", errorMessage },
-    });
-    return Response.json({ error: errorMessage, repoId: repo.id }, { status: 500 });
-  }
-
   try {
-    await backfillEmbeddings(repo.id, apiKey);
+    await backfillEmbeddings(repo.id, resolved.apiKey);
   } catch (err) {
     const errorMessage =
       err instanceof EmbedError

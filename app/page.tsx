@@ -1,3 +1,5 @@
+import { ApiKeyManager } from "@/components/api-key-manager";
+
 export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-4 px-6 py-24">
@@ -7,6 +9,9 @@ export default function Home() {
         key, paste a URL, ask questions, get streaming answers with
         citations back to specific files.
       </p>
+      <div>
+        <ApiKeyManager />
+      </div>
       <p className="text-xs text-zinc-500">Work in progress.</p>
     </main>
   );
