@@ -1,3 +1,4 @@
+import { validateUIMessages } from "ai";
 import { z } from "zod";
 
 import { ChatError, streamAnswer } from "@/lib/chat";
@@ -6,14 +7,11 @@ import { resolveApiKey } from "@/lib/session";
 
 export const maxDuration = 60;
 
-const MessageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
-  content: z.string().min(1).max(8000),
-});
-
+// useChat posts { repoId, messages: UIMessage[] }. We validate the
+// envelope with Zod, then validateUIMessages checks the message shape.
 const BodySchema = z.object({
   repoId: z.string().min(1, "repoId is required"),
-  messages: z.array(MessageSchema).min(1).max(40),
+  messages: z.array(z.unknown()).min(1, "messages must not be empty").max(40),
 });
 
 export async function POST(req: Request) {
@@ -32,6 +30,13 @@ export async function POST(req: Request) {
     );
   }
 
+  let messages;
+  try {
+    messages = await validateUIMessages({ messages: parsed.data.messages });
+  } catch {
+    return Response.json({ error: "invalid messages" }, { status: 400 });
+  }
+
   const resolved = await resolveApiKey();
   if (!resolved.ok) {
     return Response.json(
@@ -47,7 +52,7 @@ export async function POST(req: Request) {
   try {
     answer = await streamAnswer({
       repoId: parsed.data.repoId,
-      messages: parsed.data.messages,
+      messages,
       apiKey: resolved.apiKey,
       abortSignal: req.signal,
     });

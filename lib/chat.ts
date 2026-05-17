@@ -3,7 +3,7 @@
 // Day 6 non-streaming version — only the model call now streams.
 
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { streamText } from "ai";
+import { convertToModelMessages, streamText, type UIMessage } from "ai";
 
 import { retrieveTopK, type RetrievedChunk } from "./retrieve";
 
@@ -14,13 +14,6 @@ const SYSTEM_INSTRUCTIONS = `You answer questions about a specific GitHub reposi
 Use only the file excerpts in the "Repository excerpts" section below. When you reference code or describe behaviour, cite the source inline using the exact format [path:start-end] — for example [src/index.ts:42-58]. The path and line range must be one that appears in the excerpts.
 
 If the answer is not present in the excerpts, say so plainly rather than guessing. Do not invent files, line ranges, or APIs that are not in the excerpts. Prefer short, concrete answers grounded in the cited code over speculation.`;
-
-export type ChatRole = "user" | "assistant";
-
-export type ChatMessage = {
-  role: ChatRole;
-  content: string;
-};
 
 export class ChatError extends Error {
   readonly status: number;
@@ -40,6 +33,13 @@ function formatChunks(chunks: RetrievedChunk[]): string {
     .join("\n\n");
 }
 
+/** Concatenate the text parts of a UI message into a plain string. */
+function uiMessageText(message: UIMessage): string {
+  return message.parts
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("");
+}
+
 export type StreamAnswer = {
   result: ReturnType<typeof streamText>;
   citations: RetrievedChunk[];
@@ -53,7 +53,7 @@ export type StreamAnswer = {
  */
 export async function streamAnswer(params: {
   repoId: string;
-  messages: ChatMessage[];
+  messages: UIMessage[];
   apiKey: string;
   abortSignal?: AbortSignal;
 }): Promise<StreamAnswer> {
@@ -65,8 +65,12 @@ export async function streamAnswer(params: {
   if (!lastUser) {
     throw new ChatError(400, "no user message found in messages");
   }
+  const question = uiMessageText(lastUser).trim();
+  if (!question) {
+    throw new ChatError(400, "last user message has no text");
+  }
 
-  const citations = await retrieveTopK(repoId, lastUser.content, apiKey);
+  const citations = await retrieveTopK(repoId, question, apiKey);
 
   const contextSection =
     citations.length === 0
@@ -77,11 +81,12 @@ export async function streamAnswer(params: {
 
   const google = createGoogleGenerativeAI({ apiKey });
   const startedAt = Date.now();
+  const modelMessages = await convertToModelMessages(messages);
 
   const result = streamText({
     model: google(CHAT_MODEL),
     system,
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: modelMessages,
     temperature: 0.2,
     maxOutputTokens: 2048,
     abortSignal,
