@@ -6,6 +6,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 
 import { ApiKeyManager } from "@/components/api-key-manager";
+import { MarkdownMessage } from "@/components/markdown-message";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,6 +16,7 @@ export type RepoInfo = {
   id: string;
   owner: string;
   name: string;
+  commitSha: string;
   status: string;
 };
 
@@ -100,6 +102,7 @@ export function ChatPanel({ repo }: { repo: RepoInfo }) {
               key={message.id}
               role={message.role}
               text={messageText(message)}
+              repo={repo}
             />
           ))}
 
@@ -145,20 +148,22 @@ export function ChatPanel({ repo }: { repo: RepoInfo }) {
 function MessageBubble({
   role,
   text,
+  repo,
 }: {
   role: string;
   text: string;
+  repo: RepoInfo;
 }) {
-  const isUser = role === "user";
+  if (role === "user") {
+    return (
+      <div className="bg-primary text-primary-foreground ml-auto max-w-[85%] rounded-lg px-3 py-2 text-sm">
+        {text}
+      </div>
+    );
+  }
   return (
-    <div
-      className={
-        isUser
-          ? "bg-primary text-primary-foreground ml-auto max-w-[85%] rounded-lg px-3 py-2 text-sm"
-          : "bg-muted text-foreground mr-auto max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap"
-      }
-    >
-      {text}
+    <div className="bg-muted text-foreground mr-auto max-w-[85%] rounded-lg px-3 py-2">
+      <MarkdownMessage text={text} repo={repo} />
     </div>
   );
 }

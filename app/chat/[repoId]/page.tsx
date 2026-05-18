@@ -12,7 +12,13 @@ export default async function ChatPage({
 
   const repo = await prisma.repo.findUnique({
     where: { id: repoId },
-    select: { id: true, owner: true, name: true, status: true },
+    select: {
+      id: true,
+      owner: true,
+      name: true,
+      commitSha: true,
+      status: true,
+    },
   });
 
   if (!repo) {

@@ -11,9 +11,17 @@ export const CHAT_MODEL = "gemini-2.5-flash";
 
 const SYSTEM_INSTRUCTIONS = `You answer questions about a specific GitHub repository.
 
-Use only the file excerpts in the "Repository excerpts" section below. When you reference code or describe behaviour, cite the source inline using the exact format [path:start-end] — for example [src/index.ts:42-58]. The path and line range must be one that appears in the excerpts.
+Use only the file excerpts in the "Repository excerpts" section below. If the answer is not present in the excerpts, say so plainly rather than guessing. Do not invent files, line ranges, or APIs that are not in the excerpts. Prefer short, concrete answers grounded in the cited code over speculation.
 
-If the answer is not present in the excerpts, say so plainly rather than guessing. Do not invent files, line ranges, or APIs that are not in the excerpts. Prefer short, concrete answers grounded in the cited code over speculation.`;
+Citations — whenever you reference code or describe behaviour, cite the source inline in this exact format:
+- [path:start-end] for a line range, e.g. [src/index.ts:42-58]
+- [path:line] for a single line, e.g. [src/index.ts:42]
+
+Citation rules:
+- Use the file path exactly as it appears in the excerpt's "path" attribute, relative to the repository root.
+- Use line numbers that fall within the excerpt's "lines" attribute.
+- Write the citation as plain text immediately after the claim it supports. Never wrap a citation in backticks, a code block, or a markdown link.
+- Only cite paths and line ranges that actually appear in the excerpts.`;
 
 export class ChatError extends Error {
   readonly status: number;
