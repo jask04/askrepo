@@ -9,6 +9,9 @@ const schema = z.object({
   SESSION_SECRET: z
     .string()
     .min(32, "SESSION_SECRET must be at least 32 characters"),
+  // Repo id used for the one-click tour. Optional — set once a demo
+  // repo has been pre-indexed.
+  TOUR_REPO_ID: z.string().min(1).optional(),
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
