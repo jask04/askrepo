@@ -60,6 +60,52 @@ const SKIP_FILES = new Set([
 
 export const MAX_FILE_BYTES = 1 * 1024 * 1024; // 1MB per file
 export const MAX_TOTAL_CHUNK_BYTES = 5 * 1024 * 1024; // 5MB chunked text
+export const MAX_REPO_SIZE_KB = 50_000; // 50MB from GitHub's repo metadata
+
+export type RepoSizeCheck =
+  | { ok: true; sizeKb: number }
+  | { ok: false; kind: "too_large"; sizeKb: number }
+  | { ok: false; kind: "not_found" }
+  | { ok: false; kind: "unavailable" };
+
+/**
+ * Cheap pre-flight: ask GitHub's REST API how big the repo is so we
+ * can reject obvious giants before paying for a clone. The GitHub API
+ * is rate-limited (60/h unauthenticated) — if the call fails we log
+ * and proceed, since the 5MB chunked-text cap is the real backstop.
+ */
+export async function checkGithubRepoSize(
+  owner: string,
+  name: string,
+): Promise<RepoSizeCheck> {
+  let resp: Response;
+  try {
+    resp = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
+      {
+        headers: {
+          accept: "application/vnd.github+json",
+          "user-agent": "askrepo",
+        },
+      },
+    );
+  } catch {
+    return { ok: false, kind: "unavailable" };
+  }
+  if (resp.status === 404) return { ok: false, kind: "not_found" };
+  if (!resp.ok) return { ok: false, kind: "unavailable" };
+  let data: { size?: unknown };
+  try {
+    data = (await resp.json()) as { size?: unknown };
+  } catch {
+    return { ok: false, kind: "unavailable" };
+  }
+  const sizeKb = typeof data.size === "number" ? data.size : 0;
+  if (sizeKb > MAX_REPO_SIZE_KB) {
+    return { ok: false, kind: "too_large", sizeKb };
+  }
+  return { ok: true, sizeKb };
+}
 
 export type IngestedFile = {
   path: string;
