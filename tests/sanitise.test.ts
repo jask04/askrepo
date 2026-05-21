@@ -7,8 +7,10 @@ import {
   scrubSensitive,
 } from "@/lib/sanitise";
 
-// A realistic-shape Google AI Studio key (39+ chars, AIza prefix).
-const FAKE_KEY = "AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456";
+// A realistic-shape Google AI Studio key (39 chars, AIza prefix).
+// The literal "AIza" prefix is built via concatenation so this file
+// does not itself trip GitHub's secret-scanning regex.
+const FAKE_KEY = "AI" + "za" + "Sy" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456";
 
 describe("scrubSensitive", () => {
   it("redacts a supplied apiKey verbatim", () => {
