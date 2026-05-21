@@ -1,5 +1,7 @@
 # askrepo
 
+[![CI](https://github.com/jask04/askrepo/actions/workflows/ci.yml/badge.svg)](https://github.com/jask04/askrepo/actions/workflows/ci.yml)
+
 Chat with any public GitHub repo. Bring your own free Gemini API key,
 paste a URL, ask questions, get streaming answers with citations back
 to specific files.
