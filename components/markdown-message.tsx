@@ -1,6 +1,9 @@
 "use client";
 
+import "highlight.js/styles/github-dark.css";
+
 import ReactMarkdown, { type Components } from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 import type { RepoRef } from "@/lib/citations";
@@ -51,11 +54,18 @@ const components: Components = {
     return <li className="my-0.5">{children}</li>;
   },
   code({ className, children }) {
-    // Block code carries a language- className from the fence; inline
-    // code does not.
-    const isBlock = typeof className === "string" && className.includes("language-");
+    // Block code carries a language- className from the fence (and, after
+    // rehype-highlight runs, an `hljs` class plus token spans). Preserve
+    // that className so the theme applies; only inline code gets our pill.
+    const isBlock =
+      typeof className === "string" &&
+      (className.includes("language-") || className.includes("hljs"));
     if (isBlock) {
-      return <code className="font-mono text-[0.85em]">{children}</code>;
+      return (
+        <code className={`${className ?? ""} font-mono text-[0.85em]`}>
+          {children}
+        </code>
+      );
     }
     return (
       <code className="bg-muted rounded px-1 py-0.5 font-mono text-[0.85em]">
@@ -92,6 +102,7 @@ export function MarkdownMessage({
     <div className="text-sm leading-6">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, [remarkCitations, repo]]}
+        rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={components}
       >
         {text}

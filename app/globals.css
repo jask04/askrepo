@@ -128,3 +128,9 @@
     @apply font-sans;
   }
 }
+/* Let highlight.js token colours render on our own <pre> background
+   instead of the theme's built-in dark slab. */
+pre code.hljs {
+  background: transparent;
+  padding: 0;
+}
