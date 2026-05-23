@@ -7,6 +7,8 @@ streaming answers with citations that link back to the exact lines on
 GitHub. You bring your own free [Google AI Studio](https://aistudio.google.com/apikey)
 key, so the host pays nothing for visitor traffic.
 
+![askrepo demo](docs/demo.gif)
+
 **Live demo:** https://askrepo-one.vercel.app
 
 The demo's "Try the tour repo" button runs against a pre-indexed copy of
