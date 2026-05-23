@@ -107,6 +107,33 @@ export async function checkGithubRepoSize(
   return { ok: true, sizeKb };
 }
 
+/**
+ * Latest commit SHA on the repo's default branch, or null if GitHub is
+ * unavailable. Used to tell whether an indexed repo has gone stale.
+ */
+export async function fetchLatestCommitSha(
+  owner: string,
+  name: string,
+): Promise<string | null> {
+  try {
+    const resp = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits?per_page=1`,
+      {
+        headers: {
+          accept: "application/vnd.github+json",
+          "user-agent": "askrepo",
+        },
+      },
+    );
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as Array<{ sha?: unknown }>;
+    const sha = data[0]?.sha;
+    return typeof sha === "string" ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
 export type IngestedFile = {
   path: string;
   chunks: Chunk[];

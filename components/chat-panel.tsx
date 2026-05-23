@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
@@ -43,7 +44,11 @@ function statusLabel(status: string): string {
 }
 
 export function ChatPanel({ repo }: { repo: RepoInfo }) {
+  const router = useRouter();
   const [input, setInput] = useState("");
+  const [stale, setStale] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
+  const [reindexError, setReindexError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const { messages, sendMessage, status, error } = useChat({
@@ -59,11 +64,58 @@ export function ChatPanel({ repo }: { repo: RepoInfo }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, status]);
 
+  // Check whether the repo has new commits since it was indexed.
+  useEffect(() => {
+    if (repo.status !== "READY") return;
+    let cancelled = false;
+    fetch(`/api/freshness?repoId=${encodeURIComponent(repo.id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { stale?: boolean } | null) => {
+        if (!cancelled && data?.stale) setStale(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [repo.id, repo.status]);
+
   function submit() {
     const text = input.trim();
     if (!text || busy) return;
     sendMessage({ text });
     setInput("");
+  }
+
+  async function reindex() {
+    if (reindexing) return;
+    setReindexing(true);
+    setReindexError(null);
+    try {
+      const resp = await fetch("/api/ingest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          url: `https://github.com/${repo.owner}/${repo.name}`,
+        }),
+      });
+      if (!resp.ok) {
+        const data: unknown = await resp.json().catch(() => ({}));
+        const message =
+          typeof data === "object" && data !== null && "error" in data
+            ? String((data as { error: unknown }).error)
+            : "Re-index failed.";
+        setReindexError(message);
+        setReindexing(false);
+        return;
+      }
+      // commitSha changed — re-render the server component to pick it up.
+      setStale(false);
+      setReindexing(false);
+      router.refresh();
+    } catch {
+      setReindexError("Network error. Please try again.");
+      setReindexing(false);
+    }
   }
 
   return (
@@ -78,11 +130,38 @@ export function ChatPanel({ repo }: { repo: RepoInfo }) {
           >
             {repo.owner}/{repo.name}
           </a>
-          <p className="text-muted-foreground text-xs">
-            {statusLabel(repo.status)}
+          <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <span>{statusLabel(repo.status)}</span>
+            {repo.commitSha && (
+              <>
+                <span>·</span>
+                <a
+                  href={`https://github.com/${repo.owner}/${repo.name}/commit/${repo.commitSha}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono hover:underline"
+                >
+                  {repo.commitSha.slice(0, 7)}
+                </a>
+              </>
+            )}
+            {stale && <span className="text-amber-500">· new commits</span>}
           </p>
+          {reindexError && (
+            <p className="text-destructive mt-0.5 text-xs">{reindexError}</p>
+          )}
         </div>
-        <div className="shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
+          {(stale || reindexing) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={reindex}
+              disabled={reindexing}
+            >
+              {reindexing ? "Re-indexing…" : "Re-index"}
+            </Button>
+          )}
           <ApiKeyManager triggerLabel="Set key" />
         </div>
       </header>
