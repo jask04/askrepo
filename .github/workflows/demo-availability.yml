@@ -1,0 +1,33 @@
+name: Demo Availability
+
+on:
+  schedule:
+    # Secondary check; Vercel Cron is the primary long-running maintainer.
+    - cron: "32 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-availability
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check public demo
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    env:
+      ASKREPO_URL: https://askrepo-one.vercel.app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Exercise tour demo
+        run: npm run demo:check

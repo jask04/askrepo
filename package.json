@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "demo:check": "node scripts/check-demo.mjs",
+    "demo:maintain": "node scripts/run-demo-maintenance.mjs",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "postinstall": "prisma generate"

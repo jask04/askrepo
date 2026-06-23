@@ -4,8 +4,8 @@ import { ApiKeyManager } from "@/components/api-key-manager";
 import { IngestForm } from "@/components/ingest-form";
 import { TourButton } from "@/components/tour-button";
 import { Card, CardContent } from "@/components/ui/card";
-import { config } from "@/lib/config";
 import { prisma } from "@/lib/db";
+import { isTourConfigured } from "@/lib/tour";
 
 const STEPS = [
   "Clone — the repo is shallow-cloned on the server.",
@@ -42,7 +42,7 @@ export default async function Home() {
               triggerLabel="Use your own free Gemini key"
               triggerVariant="outline"
             />
-            {config.TOUR_REPO_ID && <TourButton />}
+            {isTourConfigured() && <TourButton />}
           </div>
           <p className="text-muted-foreground text-xs">
             Your key is stored only in an encrypted, httpOnly session

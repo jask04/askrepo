@@ -12,6 +12,12 @@ const schema = z.object({
   // Repo id used for the one-click tour. Optional — set once a demo
   // repo has been pre-indexed.
   TOUR_REPO_ID: z.string().min(1).optional(),
+  // Repo URL used by demo maintenance to re-seed the tour if the
+  // database row disappears. Optional because local BYOK flows do not
+  // need tour mode.
+  TOUR_REPO_URL: z.string().url().optional(),
+  // Secret used by Vercel Cron to call /api/cron/demo.
+  CRON_SECRET: z.string().min(32).optional(),
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),

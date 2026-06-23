@@ -137,6 +137,7 @@ Useful scripts:
 npm run typecheck      # tsc --noEmit
 npm run lint           # eslint
 npm test               # vitest (set RUN_INTEGRATION=1 for the DB test)
+npm run demo:check     # exercise the live public tour path
 ```
 
 ## Deploying
@@ -158,7 +159,13 @@ Environment variables:
 | `GOOGLE_API_KEY` | Host key for tour mode |
 | `SESSION_SECRET` | iron-session cookie encryption (≥32 chars) |
 | `TOUR_REPO_ID` | Repo id powering the one-click tour (optional) |
+| `TOUR_REPO_URL` | Repo URL used to re-seed or refresh the tour index |
+| `CRON_SECRET` | Bearer secret for the daily Vercel demo maintenance cron |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Upstash, for rate limiting |
+
+Demo durability is handled by a daily Vercel Cron job at
+`/api/cron/demo` plus a secondary GitHub Actions availability check. See
+[`docs/demo-ops.md`](docs/demo-ops.md) for the runbook.
 
 ## What's deliberately not here
 
@@ -180,6 +187,7 @@ Environment variables:
 app/
   api/
     chat/route.ts      streaming chat (retrieval + Gemini via AI SDK)
+    cron/demo/route.ts daily demo maintenance + smoke check
     ingest/route.ts    clone, chunk, embed; rate limit + size guards
     key/route.ts       validate + store the visitor's key (iron-session)
     search/route.ts    thin vector-search endpoint for manual testing
@@ -194,11 +202,13 @@ lib/
   db.ts                Prisma singleton
   embed.ts             Gemini embeddings (batched, retry on 429)
   ingest.ts            clone + walk + GitHub size check
+  index-repo.ts        shared repo indexing/re-indexing pipeline
   ratelimit.ts         per-IP sliding-window limits (Upstash)
   remark-citations.ts  AST plugin: citations -> links
   retrieve.ts          pgvector similarity search
   sanitise.ts          error sanitiser (never leaks the key)
   session.ts           iron-session wrapper + key resolution
+  tour.ts              tour repo resolution and fallback URL
 components/            chat panel, BYOK dialog, ingest form, tour button
 prisma/                schema + the pgvector init migration
 tests/                 vitest unit + integration tests
