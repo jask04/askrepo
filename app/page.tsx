@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { isTourConfigured } from "@/lib/tour";
 
 const STEPS = [
-  "Clone — the repo is shallow-cloned on the server.",
+  "Fetch — the repo is read through GitHub's tree and raw file APIs.",
   "Chunk — every text file is split into ~600-token chunks.",
   "Embed — each chunk is embedded with Gemini and stored in pgvector.",
   "Retrieve — your question pulls the nearest chunks by vector search.",

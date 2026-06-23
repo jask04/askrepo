@@ -20,9 +20,9 @@ around without fetching a key first.
 
 1. You paste a public GitHub URL and your own Gemini API key (or click the
    tour button to use the host's).
-2. The server shallow-clones the repo, splits every text file into
-   overlapping token-sized chunks, embeds each chunk with Gemini, and
-   stores the vectors in Postgres + pgvector.
+2. The server reads the repo through GitHub's tree/raw file APIs, splits
+   every text file into overlapping token-sized chunks, embeds each chunk
+   with Gemini, and stores the vectors in Postgres + pgvector.
 3. You ask a question. The server embeds the question, pulls the nearest
    chunks by vector similarity, and streams a Gemini answer grounded in
    them.
@@ -46,7 +46,7 @@ Bring-your-own-key flow
 
 Ingest path
   POST /api/ingest ─► resolve key ─► per-IP rate limit ─► GitHub size
-   pre-flight ─► shallow clone ─► walk + chunk (~600 tok / 80 overlap)
+   pre-flight ─► tree/raw file fetch ─► chunk (~600 tok / 80 overlap)
    ─► insert Documents (embedding NULL) ─► embed in batches (retry on 429)
    ─► write vectors ─► Repo.status = READY
 
@@ -78,9 +78,11 @@ aren't needed for sizing.
 **Synchronous ingest with a size cap.** Ingestion runs inside the request
 rather than via a background queue. To stay within the function timeout
 there are three guards: a GitHub pre-flight that rejects repos over 50 MB,
-a 1 MB-per-file limit, and a 5 MB cap on total chunked text. Embedding
-batches retry with backoff on free-tier rate limits, so a large repo
-slows down rather than failing outright.
+a 1 MB-per-file limit, and a 5 MB cap on total chunked text. Repo contents
+are read through GitHub's tree API and raw file URLs so the app does not
+depend on a `git` binary in serverless runtimes. Embedding batches retry
+with backoff on free-tier rate limits, so a large repo slows down rather
+than failing outright.
 
 **Prompt structure.** Retrieved chunks are passed as
 `<file path="…" lines="…">…</file>` blocks under a system instruction that
@@ -188,7 +190,7 @@ app/
   api/
     chat/route.ts      streaming chat (retrieval + Gemini via AI SDK)
     cron/demo/route.ts daily demo maintenance + smoke check
-    ingest/route.ts    clone, chunk, embed; rate limit + size guards
+    ingest/route.ts    fetch, chunk, embed; rate limit + size guards
     key/route.ts       validate + store the visitor's key (iron-session)
     search/route.ts    thin vector-search endpoint for manual testing
     tour/route.ts      switch the session into tour mode
@@ -201,7 +203,7 @@ lib/
   config.ts            Zod-validated environment
   db.ts                Prisma singleton
   embed.ts             Gemini embeddings (batched, retry on 429)
-  ingest.ts            clone + walk + GitHub size check
+  ingest.ts            GitHub tree/raw fetch + size check
   index-repo.ts        shared repo indexing/re-indexing pipeline
   ratelimit.ts         per-IP sliding-window limits (Upstash)
   remark-citations.ts  AST plugin: citations -> links
