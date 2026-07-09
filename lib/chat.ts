@@ -7,7 +7,7 @@ import { convertToModelMessages, streamText, type UIMessage } from "ai";
 
 import { retrieveTopK, type RetrievedChunk } from "./retrieve";
 
-export const CHAT_MODEL = "gemini-2.5-flash";
+export const CHAT_MODEL = "gemini-3.1-flash-lite";
 
 const SYSTEM_INSTRUCTIONS = `You answer questions about a specific GitHub repository.
 

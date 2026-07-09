@@ -91,8 +91,25 @@ const chat = await request(
 );
 assertOk("tour chat", chat);
 
-if (!chat.text.includes('"type":"text-delta"') && !chat.text.includes("data: [DONE]")) {
-  throw new Error("tour chat response did not look like an AI SDK stream");
+const streamErrorMarkers = [
+  '"type":"error"',
+  '"errorText"',
+  "model_not_found",
+  "no longer available",
+];
+
+const streamError = streamErrorMarkers.find((marker) =>
+  chat.text.toLowerCase().includes(marker.toLowerCase()),
+);
+
+if (streamError) {
+  throw new Error(
+    `tour chat stream returned an error (${streamError}): ${chat.text.slice(0, 500)}`,
+  );
+}
+
+if (!chat.text.includes('"type":"text-delta"')) {
+  throw new Error("tour chat response did not include a text delta");
 }
 
 console.log(

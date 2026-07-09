@@ -102,7 +102,7 @@ inside code blocks are left alone) into links to
 | Database | Postgres 16 + pgvector (Neon) |
 | ORM | Prisma 6 |
 | Embeddings | Google `gemini-embedding-001` (768-dim) |
-| Chat | Google `gemini-2.5-flash` |
+| Chat | Google `gemini-3.1-flash-lite` |
 | Streaming + UI | Vercel AI SDK (`ai`, `@ai-sdk/google`, `@ai-sdk/react`) |
 | Encrypted cookies | iron-session |
 | Rate limiting | Upstash Redis (`@upstash/ratelimit`) |
