@@ -8,6 +8,8 @@ const baseUrl = (
 
 const question =
   process.env.ASKREPO_DEMO_QUESTION || "Where is the main server entrypoint?";
+const chatAttempts = 3;
+const chatRetryDelaysMs = [5_000, 15_000];
 
 function cookieHeader(response) {
   const values =
@@ -47,6 +49,35 @@ function assertOk(label, result) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function assertChatStream(chat) {
+  assertOk("tour chat", chat);
+
+  const streamErrorMarkers = [
+    '"type":"error"',
+    '"errorText"',
+    "model_not_found",
+    "no longer available",
+  ];
+
+  const streamError = streamErrorMarkers.find((marker) =>
+    chat.text.toLowerCase().includes(marker.toLowerCase()),
+  );
+
+  if (streamError) {
+    throw new Error(
+      `tour chat stream returned an error (${streamError}): ${chat.text.slice(0, 500)}`,
+    );
+  }
+
+  if (!chat.text.includes('"type":"text-delta"')) {
+    throw new Error("tour chat response did not include a text delta");
+  }
+}
+
 const home = await request("/");
 assertOk("homepage", home);
 
@@ -68,48 +99,44 @@ const chatPage = await request(`/chat/${encodeURIComponent(repoId)}`, {
 });
 assertOk("chat page", chatPage);
 
-const chat = await request(
-  "/api/chat",
-  {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      cookie,
+let chat = null;
+let chatAttempt = 0;
+for (let attempt = 1; attempt <= chatAttempts; attempt += 1) {
+  chatAttempt = attempt;
+  chat = await request(
+    "/api/chat",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({
+        repoId,
+        messages: [
+          {
+            id: `demo-check-${attempt}`,
+            role: "user",
+            parts: [{ type: "text", text: question }],
+          },
+        ],
+      }),
     },
-    body: JSON.stringify({
-      repoId,
-      messages: [
-        {
-          id: "demo-check",
-          role: "user",
-          parts: [{ type: "text", text: question }],
-        },
-      ],
-    }),
-  },
-  90_000,
-);
-assertOk("tour chat", chat);
-
-const streamErrorMarkers = [
-  '"type":"error"',
-  '"errorText"',
-  "model_not_found",
-  "no longer available",
-];
-
-const streamError = streamErrorMarkers.find((marker) =>
-  chat.text.toLowerCase().includes(marker.toLowerCase()),
-);
-
-if (streamError) {
-  throw new Error(
-    `tour chat stream returned an error (${streamError}): ${chat.text.slice(0, 500)}`,
+    90_000,
   );
-}
 
-if (!chat.text.includes('"type":"text-delta"')) {
-  throw new Error("tour chat response did not include a text delta");
+  try {
+    assertChatStream(chat);
+    break;
+  } catch (err) {
+    if (attempt === chatAttempts) throw err;
+    const delayMs = chatRetryDelaysMs[attempt - 1] ?? chatRetryDelaysMs.at(-1);
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `tour chat attempt ${attempt} failed; retrying in ${delayMs}ms: ${message.slice(0, 240)}`,
+    );
+    await sleep(delayMs);
+  }
 }
 
 console.log(
@@ -120,8 +147,9 @@ console.log(
       repoId,
       homeStatus: home.response.status,
       chatPageStatus: chatPage.response.status,
-      chatStatus: chat.response.status,
-      streamBytes: Buffer.byteLength(chat.text, "utf8"),
+      chatStatus: chat?.response.status,
+      chatAttempt,
+      streamBytes: Buffer.byteLength(chat?.text ?? "", "utf8"),
     },
     null,
     2,
