@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   test:
-    name: Lint, typecheck, test
+    name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
 
     services:
@@ -58,3 +58,6 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Build
+        run: npm run build

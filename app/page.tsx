@@ -15,6 +15,10 @@ const STEPS = [
   "Stream — Gemini answers from those chunks, streamed token by token.",
 ];
 
+// The recent-repo list changes as repositories are indexed. Query it per
+// request rather than snapshotting it (and requiring a live DB) during build.
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   const recent = await prisma.repo.findMany({
     where: { status: "READY" },
