@@ -1,9 +1,6 @@
-// remark plugin that rewrites [path:start-end] spans in the markdown
-// AST into links to github.com. Operating on the AST (rather than the
-// raw string) means citations inside code blocks are left untouched —
-// code is held in `code`/`inlineCode` nodes, not `text` nodes.
-
-import { buildSourceUrl, splitByCitations, type RepoRef } from "./citations";
+// Links come only from server-validated per-message evidence. Arbitrary
+// model markdown links and path/line guesses cannot bypass validation.
+import type { ResolvedCitation } from "./citations";
 
 type MdastNode = {
   type: string;
@@ -13,50 +10,38 @@ type MdastNode = {
   data?: Record<string, unknown>;
 };
 
-/** Quick pre-check so we only run the splitter on candidate text. */
-const LIKELY = /\[[^\]\s:]+:\d/;
-
-function rewrite(node: MdastNode, repo: RepoRef): void {
+function rewrite(node: MdastNode, citations: ResolvedCitation[]): void {
   if (!node.children) return;
-
   const next: MdastNode[] = [];
   for (const child of node.children) {
-    if (
-      child.type === "text" &&
-      typeof child.value === "string" &&
-      LIKELY.test(child.value)
-    ) {
-      const segments = splitByCitations(child.value);
-      const hasCitation = segments.some((s) => s.kind === "citation");
-      if (!hasCitation) {
-        next.push(child);
-        continue;
+    if (child.type === "link" || child.type === "linkReference") {
+      // Preserve the visible words, without trusting a model-generated URL.
+      next.push(...(child.children ?? []));
+    } else if (child.type === "text" && typeof child.value === "string") {
+      let last = 0;
+      for (const match of child.value.matchAll(/\[(C\d+)\]/g)) {
+        next.push({ type: "text", value: child.value.slice(last, match.index) });
+        const citation = citations.find((item) => item.id === match[1]);
+        next.push(citation ? {
+          type: "link", url: citation.url,
+          data: { hProperties: {
+            className: "askrepo-citation",
+            title: citation.excerpt,
+          } },
+          children: [{ type: "text", value: citation.path + ":" + citation.startLine +
+            (citation.endLine === citation.startLine ? "" : "-" + citation.endLine) }],
+        } : { type: "text", value: "[unverified source]" });
+        last = match.index + match[0].length;
       }
-      for (const segment of segments) {
-        if (segment.kind === "text") {
-          next.push({ type: "text", value: segment.value });
-        } else {
-          const label = segment.citation.raw.slice(1, -1);
-          next.push({
-            type: "link",
-            url: buildSourceUrl(repo, segment.citation),
-            data: { hProperties: { className: "askrepo-citation" } },
-            children: [{ type: "text", value: label }],
-          });
-        }
-      }
+      next.push({ type: "text", value: child.value.slice(last) });
     } else {
-      rewrite(child, repo);
+      rewrite(child, citations);
       next.push(child);
     }
   }
   node.children = next;
 }
 
-/** remark plugin attacher. Pass the repo via the tuple form:
- *  remarkPlugins={[[remarkCitations, repo]]} */
-export function remarkCitations(repo: RepoRef) {
-  return (tree: MdastNode) => {
-    rewrite(tree, repo);
-  };
+export function remarkCitations(citations: ResolvedCitation[]) {
+  return (tree: MdastNode) => rewrite(tree, citations);
 }

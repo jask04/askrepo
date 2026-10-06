@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
+import type { CitationMetadata, ResolvedCitation } from "@/lib/citations";
 
 import { ApiKeyManager } from "@/components/api-key-manager";
 import { MarkdownMessage } from "@/components/markdown-message";
@@ -51,7 +52,7 @@ export function ChatPanel({ repo }: { repo: RepoInfo }) {
   const [reindexError, setReindexError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const { messages, sendMessage, status, error } = useChat({
+  const { messages, sendMessage, status, error } = useChat<UIMessage<CitationMetadata>>({
     transport: new DefaultChatTransport({
       api: "/api/chat",
       body: { repoId: repo.id },
@@ -181,7 +182,7 @@ export function ChatPanel({ repo }: { repo: RepoInfo }) {
               key={message.id}
               role={message.role}
               text={messageText(message)}
-              repo={repo}
+              citations={message.metadata?.citations ?? []}
             />
           ))}
 
@@ -227,11 +228,11 @@ export function ChatPanel({ repo }: { repo: RepoInfo }) {
 function MessageBubble({
   role,
   text,
-  repo,
+  citations,
 }: {
   role: string;
   text: string;
-  repo: RepoInfo;
+  citations: ResolvedCitation[];
 }) {
   if (role === "user") {
     return (
@@ -242,7 +243,7 @@ function MessageBubble({
   }
   return (
     <div className="bg-muted text-foreground mr-auto max-w-[85%] rounded-lg px-3 py-2">
-      <MarkdownMessage text={text} repo={repo} />
+      <MarkdownMessage text={text} citations={citations} />
     </div>
   );
 }

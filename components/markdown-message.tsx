@@ -6,22 +6,22 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
-import type { RepoRef } from "@/lib/citations";
+import type { ResolvedCitation } from "@/lib/citations";
 import { remarkCitations } from "@/lib/remark-citations";
 
-// Renders a streamed assistant answer as markdown, with [path:lines]
-// citations rewritten into links to github.com source.
+// Only server-validated per-message citations become source links.
 
 function isCitation(className: unknown): boolean {
   return typeof className === "string" && className.includes("askrepo-citation");
 }
 
 const components: Components = {
-  a({ className, href, children }) {
+  a({ className, href, title, children }) {
     if (isCitation(className)) {
       return (
         <a
           href={href}
+          title={title}
           target="_blank"
           rel="noopener noreferrer"
           className="bg-muted text-foreground hover:bg-accent rounded px-1 py-0.5 font-mono text-[0.8em] whitespace-nowrap no-underline"
@@ -93,15 +93,15 @@ const components: Components = {
 
 export function MarkdownMessage({
   text,
-  repo,
+  citations,
 }: {
   text: string;
-  repo: RepoRef;
+  citations: ResolvedCitation[];
 }) {
   return (
     <div className="text-sm leading-6">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, [remarkCitations, repo]]}
+        remarkPlugins={[remarkGfm, [remarkCitations, citations]]}
         rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={components}
       >

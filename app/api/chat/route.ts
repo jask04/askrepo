@@ -1,7 +1,8 @@
-import { validateUIMessages } from "ai";
+import { validateUIMessages, type UIMessage } from "ai";
 import { z } from "zod";
 
 import { streamAnswer } from "@/lib/chat";
+import type { CitationMetadata } from "@/lib/citations";
 import { getClientIp } from "@/lib/ip";
 import { checkRateLimit, rateLimitResponse } from "@/lib/ratelimit";
 import { errorJson, errorResponse, sanitiseError } from "@/lib/sanitise";
@@ -72,7 +73,15 @@ export async function POST(req: Request) {
       return errorResponse(err, { apiKey, logTag: "chat.pre-stream" });
     }
 
-    return answer.result.toUIMessageStreamResponse({
+    let sentCitations = -1;
+    return answer.result.toUIMessageStreamResponse<UIMessage<CitationMetadata>>({
+      messageMetadata: ({ part }) => {
+        if (part.type === "start" || part.type === "finish" ||
+            sentCitations !== answer.citations.length) {
+          sentCitations = answer.citations.length;
+          return { citations: [...answer.citations] };
+        }
+      },
       onError: (error) => {
         const s = sanitiseError(error, apiKey);
         console.error(

@@ -65,7 +65,7 @@ describe.runIf(integrationOn)("retrieveTopK (integration)", () => {
         s.content,
         10,
         1,
-        5,
+        1,
         literal,
       );
     }
@@ -91,5 +91,21 @@ describe.runIf(integrationOn)("retrieveTopK (integration)", () => {
     // distance 0 because the mock returns the same vector for identical
     // text → score 1.
     expect(results[0]?.distance).toBeCloseTo(0);
+    expect(results[0]?.repo).toEqual({ owner: "test", name: "fixture", commitSha: "0".repeat(40) });
+  });
+
+  it("does not expose partial content while a repo is being reindexed", async () => {
+    await prisma.repo.update({ where: { id: repoId }, data: { status: "INGESTING" } });
+    expect(await retrieveTopK(repoId, "alpha auth handler", "fake-key")).toEqual([]);
+    await prisma.repo.update({ where: { id: repoId }, data: { status: "READY" } });
+  });
+
+  it("returns the source version with its contents and preserves the earlier snapshot", async () => {
+    const before = await retrieveTopK(repoId, "alpha auth handler", "fake-key");
+    await prisma.repo.update({ where: { id: repoId }, data: { commitSha: "a".repeat(40) } });
+    const after = await retrieveTopK(repoId, "alpha auth handler", "fake-key");
+    expect(before[0]?.repo.commitSha).toBe("0".repeat(40));
+    expect(after[0]?.repo.commitSha).toBe("a".repeat(40));
+    expect(after[0]?.content).toBe("alpha auth handler");
   });
 });
