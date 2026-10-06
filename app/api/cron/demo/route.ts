@@ -38,12 +38,34 @@ export async function GET(req: Request) {
 
   try {
     const before = await inspectTourRepo();
+    if (before.repo && before.latestSha === null) {
+      return Response.json(
+        {
+          ok: false,
+          error: "GitHub HEAD is unavailable; the existing tour index was preserved.",
+          before: summarizeInspection(before),
+        },
+        { status: 503 },
+      );
+    }
     const reindexUrl = before.repo?.url ?? getTourRepoUrl();
     const indexed = before.reasons.length
       ? await indexGithubRepo(reindexUrl, apiKey)
       : null;
 
     const after = await inspectTourRepo();
+    if (after.repo && after.latestSha === null) {
+      return Response.json(
+        {
+          ok: false,
+          error: "GitHub HEAD is unavailable; tour freshness could not be verified.",
+          before: summarizeInspection(before),
+          after: summarizeInspection(after),
+          indexed,
+        },
+        { status: 503 },
+      );
+    }
     if (!after.repo || after.reasons.length > 0) {
       return Response.json(
         {
@@ -141,6 +163,10 @@ async function inspectTourRepo(): Promise<TourInspection> {
   if (docCount === 0) reasons.push("zero-documents");
   if (embeddedCount === 0) reasons.push("zero-embeddings");
   if (stale) reasons.push("stale");
+
+  console.log(
+    `cron.demo inspect repo=${repo.owner}/${repo.name} status=${repo.status} indexed_sha=${repo.commitSha} latest_sha=${latestSha ?? "unavailable"} documents=${docCount} embeddings=${embeddedCount} reasons=${reasons.join(",") || "none"}`,
+  );
 
   return { repo, docCount, embeddedCount, latestSha, stale, reasons };
 }

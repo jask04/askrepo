@@ -115,6 +115,8 @@ export async function fetchLatestCommitSha(
     const resp = await fetch(
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits?per_page=1`,
       {
+        // Default-branch HEAD is mutable; freshness checks need a live lookup.
+        cache: "no-store",
         headers: {
           accept: "application/vnd.github+json",
           "user-agent": "askrepo",

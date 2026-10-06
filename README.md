@@ -169,6 +169,10 @@ Demo durability is handled by a daily Vercel Cron job at
 `/api/cron/demo` plus a secondary GitHub Actions availability check. See
 [`docs/demo-ops.md`](docs/demo-ops.md) for the runbook.
 
+An unavailable initial GitHub HEAD lookup returns 503 without rebuilding the
+existing index. The final lookup must also succeed before maintenance reports
+the tour as current; a chat response alone does not prove freshness.
+
 ## What's deliberately not here
 
 - **No background-job system.** Ingestion is synchronous with a hard size
