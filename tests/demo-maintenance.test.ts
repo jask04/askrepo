@@ -87,4 +87,11 @@ describe("demo maintenance freshness", () => {
     expect(mocks.index).not.toHaveBeenCalled();
     expect(mocks.stream).toHaveBeenCalledOnce();
   });
+
+  it("fails a chat smoke answer that contains no validated evidence", async () => {
+    mocks.stream.mockResolvedValue({ result: { text: Promise.resolve("Uncited answer.") }, citations: [] });
+    const response = await GET(request());
+    expect(response.status).toBe(500);
+    expect((await response.json()).ok).toBe(false);
+  });
 });

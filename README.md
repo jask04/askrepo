@@ -26,8 +26,8 @@ around without fetching a key first.
 3. You ask a question. The server embeds the question, pulls the nearest
    chunks by vector similarity, and streams a Gemini answer grounded in
    them.
-4. Every `[path:line]` reference in the answer is rendered as a link to
-   that file and line range on github.com at the indexed commit.
+4. Source references are checked against quoted retrieved text. The server
+   finds the actual lines and supplies links to that indexed GitHub commit.
 
 Your key lives in exactly one place: an AES-encrypted, httpOnly session
 cookie scoped to your browser. It is never written to the database, never
@@ -54,7 +54,7 @@ Query path
   POST /api/chat ─► resolve key ─► per-IP rate limit ─► embed question
    ─► pgvector  ORDER BY embedding <=> query  LIMIT k  ─► build prompt
    from retrieved chunks ─► streamText (Gemini Flash) ─► stream to the
-   browser ─► inline [path:line] citations linkified to GitHub
+   server quote validation ─► browser ─► validated source links on GitHub
 ```
 
 ## Design notes
@@ -84,15 +84,27 @@ depend on a `git` binary in serverless runtimes. Embedding batches retry
 with backoff on free-tier rate limits, so a large repo slows down rather
 than failing outright.
 
-**Prompt structure.** Retrieved chunks are passed as
-`<file path="…" lines="…">…</file>` blocks under a system instruction that
-tells the model to answer only from those excerpts, to say so when the
-answer isn't present, and to cite inline as `[path:start-end]`.
+**Prompt structure.** Retrieved chunks are supplied as JSON with source IDs,
+paths and content. The model must answer only from those excerpts, say when
+the answer is missing, and cite a source ID plus a short verbatim quote:
+`[cite:S1 "quoted source text"]`. Repository text is treated as untrusted data.
 
-**Citation format.** The model emits `[path:line]` or `[path:start-end]`.
-A remark plugin rewrites those spans in the markdown AST (so citations
-inside code blocks are left alone) into links to
-`github.com/{owner}/{name}/blob/{commitSha}/{path}#L{start}-L{end}`.
+**Source-backed citations.** The server accepts only a unique, contiguous
+quote in the named retrieved source (12 non-whitespace characters minimum,
+500 characters and 8 lines maximum). Indentation, tabs and CRLF differences
+are tolerated; words and punctuation must match. It calculates the exact
+quoted line range, never expands a guess to the whole chunk, and streams a
+canonical reference with per-message evidence metadata. A remark plugin
+links only those validated references; guessed paths/lines and arbitrary
+model markdown URLs cannot create source links. Invalid references appear
+as unverified, and code blocks remain unlinked. Hover a source link to inspect
+the actual cited lines.
+
+Source content and its repository commit are read together in one SQL
+snapshot, only for READY indexes. Each answer retains its source URLs if the
+repository is later reindexed. Validation proves that the quoted text exists
+at the linked lines; it cannot prove every generated claim follows from that
+quote, or that retrieval found all relevant code.
 
 ## Stack
 
@@ -203,14 +215,15 @@ app/
 lib/
   chat.ts              prompt + streamText
   chunk.ts             token-aware chunker
-  citations.ts         [path:line] parser + GitHub URL builder
+  citations.ts         quote validation + exact source URL resolution
+  citation-stream.ts   incremental citation validation during streaming
   config.ts            Zod-validated environment
   db.ts                Prisma singleton
   embed.ts             Gemini embeddings (batched, retry on 429)
   ingest.ts            GitHub tree/raw fetch + size check
   index-repo.ts        shared repo indexing/re-indexing pipeline
   ratelimit.ts         per-IP sliding-window limits (Upstash)
-  remark-citations.ts  AST plugin: citations -> links
+  remark-citations.ts  AST plugin: validated references -> links
   retrieve.ts          pgvector similarity search
   sanitise.ts          error sanitiser (never leaks the key)
   session.ts           iron-session wrapper + key resolution

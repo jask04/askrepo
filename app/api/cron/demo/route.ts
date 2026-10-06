@@ -194,6 +194,9 @@ async function runChatSmoke(repoId: string, apiKey: string) {
   if (!text.trim()) {
     throw new Error("Demo smoke check produced an empty answer.");
   }
+  if (answer.citations.length === 0) {
+    throw new Error("Demo smoke check produced no validated source citations.");
+  }
 
   return {
     answerChars: text.length,

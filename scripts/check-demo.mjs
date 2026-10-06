@@ -76,6 +76,19 @@ function assertChatStream(chat) {
   if (!chat.text.includes('"type":"text-delta"')) {
     throw new Error("tour chat response did not include a text delta");
   }
+
+  const parts = chat.text.split("\n")
+    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+    .map((line) => JSON.parse(line.slice(6)));
+  const answer = parts.filter((part) => part.type === "text-delta")
+    .map((part) => part.delta ?? "").join("");
+  const citations = parts.filter((part) => part.messageMetadata).at(-1)
+    ?.messageMetadata?.citations ?? [];
+  const references = [...answer.matchAll(/\[(C\d+)\]/g)];
+  if (!references.length || answer.includes("[unverified source]") ||
+      references.some((reference) => !citations.some((citation) => citation.id === reference[1]))) {
+    throw new Error("tour chat did not include validated source citations");
+  }
 }
 
 const home = await request("/");
